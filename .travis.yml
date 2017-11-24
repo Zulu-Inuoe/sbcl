@@ -1,0 +1,19 @@
+language: c
+sudo: false
+dist: trusty
+  
+env:
+  global:
+  matrix:
+    - ARCH=x86
+    - ARCH=x86-64
+  os:
+    - linux
+
+addons:
+  apt:
+    packages:
+      - sbcl
+      
+script:
+  timeout 10m ./make.sh '--xc-host=sbcl --noinform --end-runtime-options --no-sysinit --no-userinit --noprint --disable-debugger --end-toplevel-options' '--arch=$ARCH'
