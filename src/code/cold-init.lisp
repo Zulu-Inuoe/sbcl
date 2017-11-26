@@ -115,29 +115,42 @@
   ;; Putting data in a synchronized hashtable (*PACKAGE-NAMES*)
   ;; requires that the main thread be properly initialized.
   (show-and-call thread-init-or-reinit)
+  (unless (!c-runtime-noinform-p)
+    (write-string "past thread-init-or-reinit"))
   ;; Printing of symbols requires that packages be filled in, because
   ;; OUTPUT-SYMBOL calls FIND-SYMBOL to determine accessibility.
   (show-and-call !package-cold-init)
+  (unless (!c-runtime-noinform-p)
+    (write-string "past package-cold-init"))
   ;; Fill in the printer's character attribute tables now.
   ;; If Genesis could write constant arrays into a target core,
   ;; that would be nice, and would tidy up some other things too.
   (show-and-call !printer-cold-init)
+  (unless (!c-runtime-noinform-p)
+    (write-string "past printer-cold-init"))
   ;; Because L-T-V forms have not executed, CHOOSE-SYMBOL-OUT-FUN doesn't work.
   (setf real-choose-symbol-out-fun #'choose-symbol-out-fun)
+  (unless (!c-runtime-noinform-p)
+    (write-string "past setf real-choose-symbol-out-fun"))
   (setf (symbol-function 'choose-symbol-out-fun)
         (lambda (&rest args) (declare (ignore args)) #'output-preserve-symbol))
 
   ;; *RAW-SLOT-DATA* is essentially a compile-time constant
   ;; but isn't dumpable as such because it has functions in it.
   (show-and-call sb!kernel::!raw-slot-data-init)
-
+  (unless (!c-runtime-noinform-p)
+    (write-string "past raw-slot-data-init"))
   ;; Anyone might call RANDOM to initialize a hash value or something;
   ;; and there's nothing which needs to be initialized in order for
   ;; this to be initialized, so we initialize it right away.
   (show-and-call !random-cold-init)
+  (unless (!c-runtime-noinform-p)
+    (write-string "past random-cold-init"))
 
   ;; Must be done before any non-opencoded array references are made.
   (show-and-call !hairy-data-vector-reffer-init)
+  (unless (!c-runtime-noinform-p)
+    (write-string "past hairy-data-vector-reffer-init"))
 
   (show-and-call !character-database-cold-init)
   (show-and-call !character-name-database-cold-init)
@@ -173,21 +186,33 @@
   ;; because a toplevel defstruct will need to add itself
   ;; to the subclasses of STRUCTURE-OBJECT.
   (show-and-call sb!kernel::!set-up-structure-object-class)
+  
+  (unless (!c-runtime-noinform-p)
+    (write-string "past set-up-structure-object-class"))
 
   (dolist (x *!cold-defconstants*)
     (destructuring-bind (name source-loc &optional docstring) x
       (setf (info :variable :kind name) :constant)
       (when source-loc (setf (info :source-location :constant name) source-loc))
       (when docstring (setf (fdocumentation name 'variable) docstring))))
+      
+  (unless (!c-runtime-noinform-p)
+    (write-string "past dolist constants"))
+    
   (!with-init-wrappers
    (dolist (x *!cold-defuns*)
      (destructuring-bind (name . inline-expansion) x
        (%defun name (fdefinition name) nil inline-expansion))))
+       
+   (unless (!c-runtime-noinform-p)
+    (write-string "past cold-defuns"))
 
   ;; KLUDGE: Why are fixups mixed up with toplevel forms? Couldn't
   ;; fixups be done separately? Wouldn't that be clearer and better?
   ;; -- WHN 19991204
   (/show0 "doing cold toplevel forms and fixups")
+  (unless (!c-runtime-noinform-p)
+    (write-string "past /show0"))
   (unless (!c-runtime-noinform-p)
     (write `("Length(TLFs)= " ,(length *!cold-toplevels*)))
     (terpri))
