@@ -1,0 +1,112 @@
+branches:
+  only:
+  - master
+clone_folder: C:\sbcl\
+environment:
+  GITHUB_AUTH_TOKEN:
+    secure: ULPZKC7s5emtsxW6EDLicUZKhL5iAaFTV5tDCN3shwRCWCQhXUtbb6PKou8JxfJd
+  SBCL_HOST_INSTALLER: sbcl-installer.msi
+  SBCL_HOST_INSTALLER_LOG: sbcl-install.log
+  MSYS2_DIR: C:\msys64\
+  SBCL_HOME: C:\sbcl-host\
+  SBCL_HOST_INSTALLER_URL: https://sourceforge.net/projects/sbcl/files/sbcl/1.3.18/sbcl-1.3.18-x86-64-windows-binary.msi/download
+  SBCL_COMMAND: sbcl --noinform --end-runtime-options --no-sysinit --no-userinit --noprint --disable-debugger --end-toplevel-options
+  APPVEYOR_SAVE_CACHE_ON_ERROR: true
+  matrix:
+    - MSYSTEM: MINGW32
+      ARCH: x86
+    - MSYSTEM: MINGW64
+      ARCH: x86-64
+install:
+  - ps: |-
+      # Set path to msys2
+      Set-AppveyorBuildVariable -Name PATH -Value $($([IO.Path]::Combine($env:MSYS2_DIR, $env:MSYSTEM, "bin\")) + ";" + $([IO.Path]::Combine($env:MSYS2_DIR, "usr\bin\")) + ";$env:PATH")
+      
+      pacman -S --needed --noconfirm pacman-mirrors
+      
+      pacman -Syu --noconfirm
+      
+      pacman -S --needed --noconfirm coreutils make git
+      
+      if (!(Test-Path $env:SBCL_HOME)) {
+        
+        echo "Downloading $env:SBCL_HOST_INSTALLER_URL"
+        echo "Saving to $env:SBCL_HOST_INSTALLER"
+        
+        # Download SBCL Installer
+        Start-FileDownload $env:SBCL_HOST_INSTALLER_URL $env:SBCL_HOST_INSTALLER -ErrorAction Stop
+        
+        echo "Finished downloading"
+        $InstallerFile = Get-Item $env:SBCL_HOST_INSTALLER -ErrorAction Stop
+        
+        
+        echo "Installing"
+        cmd /c start /wait msiexec.exe /i $env:SBCL_HOST_INSTALLER /quiet /qn /norestart /log $env:SBCL_HOST_INSTALLER_LOG INSTALLDIR=$env:SBCL_HOME
+        
+        if ($LastExitCode -ne 0) {
+          echo "Error installing"
+          exit $LastExitCode
+        }
+      }
+      else {
+        echo "SBCL_HOME exists"
+      }
+      
+      Set-AppveyorBuildVariable -Name PATH -Value "$env:SBCL_HOME;$env:PATH"
+cache: $(SBCL_HOME)
+build_script:
+  - ps: |-
+      # Run the build
+      timeout 10m ./make.sh "--xc-host=$env:SBCL_COMMAND" "--arch=$env:ARCH"
+      if ($LastExitCode -ne 0) {
+        echo "Error building SBCL"
+        exit $LastExitCode
+      }
+      
+      # Build the installer
+      bash make-windows-installer.sh
+      
+      if ($LastExitCode -ne 0) {
+        echo "Error building installer"
+        exit $LastExitCode
+      }
+      
+      # Get the version
+      Set-AppveyorBuildVariable -Name SBCL_VERSION -Value $(Invoke-Expression "'(princ (with-open-file (f ""version.lisp-expr"") (read f)))' | $env:SBCL_COMMAND")
+      
+      # Get the version plus arch
+      Set-AppveyorBuildVariable -Name SBCL_VERSION_PLUS_ARCH -Value $(cat output/version.txt)
+      
+      $ZIPDIR = Join-Path $(Resolve-Path ".\") "output\zip\"
+      mkdir $ZIPDIR
+      
+      # Prepare the directory to zip for the binary package (non-installer)
+      copy-item "src\runtime\sbcl.exe" $ZIPDIR
+      copy-item "output\sbcl.core" $ZIPDIR
+      copy-item "obj\sbcl-home\contrib" $ZIPDIR -recurse -force
+      
+      # Package the relevant files into a zip for deployment
+      # Switch into zip directory before calling 7z so it preserves hierarchy
+      pushd $ZIPDIR
+      
+      7z a "..\sbcl-$env:SBCL_VERSION_PLUS_ARCH.zip" *
+      
+      popd
+      if ($LastExitCode -ne 0) {
+        echo "Error zipping binaries"
+        exit $LastExitCode
+      }
+test: off
+artifacts:
+  - path: output\sbcl-$(SBCL_VERSION_PLUS_ARCH).msi
+    name: installer
+  - path: output\sbcl-$(SBCL_VERSION_PLUS_ARCH).zip
+    name: zip
+deploy:
+  - provider: GitHub
+    tag: $(APPVEYOR_REPO_TAG_NAME)
+    auth_token:
+      secure: "L/tzf28nfrE+wi9h40HQ/z4084Rj5W0FWNxRWzJ/fl0="
+    artifact: installer, zip
+    draft: true
+    force_update: false
