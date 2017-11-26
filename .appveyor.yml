@@ -21,8 +21,8 @@ environment:
 install:
   - ps: |-
       $PathAdditions = @(
-        $([IO.Path]::Combine($env:MSYS2_DIR, "usr\bin\"))
         $([IO.Path]::Combine($env:MSYS2_DIR, $env:MSYSTEM, "bin\"))
+        $([IO.Path]::Combine($env:MSYS2_DIR, "usr\bin\"))
         $env:SBCL_HOME
       )
       
@@ -33,40 +33,47 @@ install:
       pacman -S --needed --noconfirm coreutils make git
       
       if (!(Test-Path $env:SBCL_HOME)) {
-        
-        echo "Downloading $env:SBCL_HOST_INSTALLER_URL"
+        Add-AppveyorMessage "SBCL_HOME($env:SBCL_HOME) not present"
+        Add-AppVeyorMessage "Downloading and installing $env:SBCL_HOST_INSTALLER_URL"
         
         # Download SBCL Installer
         Start-FileDownload $env:SBCL_HOST_INSTALLER_URL sbcl-installer.msi -ErrorAction Stop
         
-        echo "Installing"
+        # Make sure the installer's actually where we expect it to be
+        if(!(Test-Path sbcl-installer.msi)) {
+          Add-AppveyorMessage "Installer missing" -Category Error
+          exit $LastExitCode
+        }
+        
+        Add-AppveyorMessage "Installing"
         cmd /c start /wait msiexec.exe /i sbcl-installer.msi /quiet /qn /norestart INSTALLDIR=$env:SBCL_HOME
         
         if ($LastExitCode -ne 0) {
-          echo "Error installing: $LastExitCode"
+          Add-AppveyorMessage "Error installing: $LastExitCode" -Category Error
           exit $LastExitCode
         }
       }
       else {
-        echo "SBCL_HOME exists"
+        Add-AppveyorMessage "SBCL_HOME exists"
       }
 cache:
-  - $(SBCL_HOST_DIR_x86)
-  - $(SBCL_HOST_DIR_x86-64)
+  - $(SBCL_HOME)
 build_script:
   - ps: |-
       # Run the build
       timeout 10m ./make.sh --xc-host=$env:SBCL_COMMAND --arch=$env:ARCH
       if ($LastExitCode -ne 0) {
-        echo "Error building SBCL: $LastExitCode"
+        Add-AppveyorMessage "Error building SBCL: $LastExitCode" -Category Error
         exit $LastExitCode
       }
+      
+      Add-AppveyorMessage "Building SBCL"
       
       # Build the installer
       bash make-windows-installer.sh
       
       if ($LastExitCode -ne 0) {
-        echo "Error building installer: $LastExitCode"
+        Add-AppveyorMessage "Error building installer: $LastExitCode" -Category Error
         exit $LastExitCode
       }
       
@@ -92,7 +99,7 @@ build_script:
       
       popd
       if ($LastExitCode -ne 0) {
-        echo "Error zipping binaries: $LastExitCode"
+        Add-AppveyorMessage "Error zipping binaries: $LastExitCode" -Category Error
         exit $LastExitCode
       }
 test: off

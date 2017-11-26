@@ -99,11 +99,18 @@
   ;; It was fine if T because in that case the legality of the arg is certain.
   ;; And be extra paranoid - ensure that it really gets called.
   (locally (declare (notinline fboundp)) (fboundp '(setf !zzzzzz)))
+  
+  (unless (!c-runtime-noinform-p)
+    (write-string "past declare"))
 
   ;; Ensure that *CURRENT-THREAD* and *HANDLER-CLUSTERS* have sane values.
   ;; create_thread_struct() assigned NIL/unbound-marker respectively.
   (sb!thread::init-initial-thread)
+  (unless (!c-runtime-noinform-p)
+    (write-string "past initial-thread"))
   (show-and-call sb!kernel::!target-error-cold-init)
+  (unless (!c-runtime-noinform-p)
+    (write-string "past target-error-cold-init"))
 
   ;; Putting data in a synchronized hashtable (*PACKAGE-NAMES*)
   ;; requires that the main thread be properly initialized.
